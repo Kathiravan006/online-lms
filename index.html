@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Learnly – Learning Management System</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;700&family=Source+Sans+3:wght@400;600&display=swap">
+<style>
+:root{--bg:#f4f7f9;--surface:#fff;--ink:#14213d;--muted:#5b6b7e;--line:#dbe3ea;--accent:#0f7f82;--accent-ink:#fff;--warn:#c47a0a;--ok:#1b8a4b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1621;--surface:#16212f;--ink:#e8eef5;--muted:#9bacbf;--line:#27374a;--accent:#3cc2c5;--accent-ink:#06222a;--warn:#e9a23b;--ok:#4cc580}}
+:root[data-theme="dark"]{--bg:#0e1621;--surface:#16212f;--ink:#e8eef5;--muted:#9bacbf;--line:#27374a;--accent:#3cc2c5;--accent-ink:#06222a;--warn:#e9a23b;--ok:#4cc580}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 "Source Sans 3",system-ui,sans-serif}
+h1,h2,h3{font-family:"Bricolage Grotesque",system-ui,sans-serif;line-height:1.15;margin:0 0 .5rem}
+header{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;padding:1rem;border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:env(safe-area-inset-top,0px);z-index:5}
+header h1{font-size:1.4rem;margin:0;margin-right:auto}
+nav{display:flex;gap:.25rem}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:.5rem .9rem;border-radius:6px}
+button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+button.on,button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+main{max-width:960px;margin:0 auto;padding:1rem}
+.grid{display:grid;gap:1rem;grid-template-columns:repeat(auto-fill,minmax(250px,1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:1rem;display:flex;flex-direction:column;gap:.5rem}
+.card .band{height:6px;border-radius:3px;margin:-.25rem 0 .25rem}
+.meta{color:var(--muted);font-size:.9rem}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent)}
+.lesson{display:flex;gap:.75rem;align-items:center;padding:.75rem;border:1px solid var(--line);border-radius:8px;background:var(--surface);margin-bottom:.5rem}
+.lesson.done{border-color:var(--ok)}
+.lesson span{flex:1}
+label{display:block;font-weight:600;margin:.75rem 0 .25rem}
+input,select,textarea{width:100%;font:inherit;padding:.5rem;border:1px solid var(--line);border-radius:6px;background:var(--surface);color:var(--ink)}
+.q{margin:1rem 0}
+.q label{font-weight:400;display:flex;gap:.5rem;margin:.25rem 0}
+.q input{width:auto}
+.msg{padding:.75rem;border-radius:8px;border:1px solid var(--line);background:var(--surface);margin:.75rem 0}
+.empty{color:var(--muted);padding:2rem 0;text-align:center}
+</style>
+</head>
+<body>
+<header>
+  <h1>Learnly</h1>
+  <nav aria-label="Main">
+    <button data-v="catalog">Courses</button>
+    <button data-v="mine">My learning</button>
+    <button data-v="teach">Teach</button>
+  </nav>
+  <select id="user" aria-label="Signed in as" style="width:auto"></select>
+</header>
+<main id="app"></main>
+
+<script>
+const USERS=[{id:"s1",name:"Asha (student)"},{id:"s2",name:"Ben (student)"},{id:"t1",name:"Dr. Rao (instructor)"}];
+const BANDS=["#0f7f82","#c47a0a","#5b5fc7","#b8416b"];
+const SEED=[
+ {id:1,title:"Python for Beginners",by:"Dr. Rao",desc:"Variables, loops, functions and small programs.",
+  lessons:["Install Python and run code","Variables and data types","Loops and conditions","Writing functions"],
+  quiz:[{q:"Which keyword defines a function?",o:["func","def","function"],a:1},{q:"What does len([1,2,3]) return?",o:["2","3","4"],a:1}]},
+ {id:2,title:"Intro to Databases",by:"Dr. Rao",desc:"Tables, keys and your first SQL queries.",
+  lessons:["What is a relational database?","Primary and foreign keys","SELECT and WHERE","JOINs"],
+  quiz:[{q:"Which clause filters rows?",o:["WHERE","ORDER BY","GROUP"],a:0}]},
+ {id:3,title:"Web Basics: HTML & CSS",by:"Dr. Rao",desc:"Build and style a simple web page.",
+  lessons:["HTML structure","Text, links, images","CSS selectors","Flexbox layout"],
+  quiz:[{q:"Which tag makes a link?",o:["<a>","<link>","<href>"],a:0}]}
+];
+let db={courses:SEED,enroll:{},done:{},scores:{}}; // enroll: "user|course" -> true; done: "user|course" -> [lesson idx]
+try{const s=localStorage.getItem("learnly");if(s)db=JSON.parse(s)}catch(e){}
+const save=()=>{try{localStorage.setItem("learnly",JSON.stringify(db))}catch(e){}};
+let me="s1",view="catalog",open=null,quizMode=false,flash="";
+const $=s=>document.querySelector(s),key=c=>me+"|"+c;
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const isTeacher=()=>me.startsWith("t");
+const pct=c=>{const d=(db.done[key(c.id)]||[]).length;return Math.round(d/c.lessons.length*100)};
+
+$("#user").innerHTML=USERS.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join("");
+$("#user").onchange=e=>{me=e.target.value;open=null;view=isTeacher()?"teach":"catalog";render()};
+document.querySelectorAll("nav button").forEach(b=>b.onclick=()=>{view=b.dataset.v;open=null;quizMode=false;flash="";render()});
+
+function render(){
+  document.querySelectorAll("nav button").forEach(b=>b.classList.toggle("on",b.dataset.v===view&&!open));
+  const a=$("#app");
+  if(open)return a.innerHTML=courseView(db.courses.find(c=>c.id===open));
+  a.innerHTML=({catalog:catalogView,mine:mineView,teach:teachView})[view]();
+}
+function card(c,i,extra){
+  return `<div class="card"><div class="band" style="background:${BANDS[i%4]}"></div>
+  <h3>${esc(c.title)}</h3><div class="meta">${esc(c.by)} · ${c.lessons.length} lessons</div>
+  <p style="margin:0">${esc(c.desc)}</p>${extra}</div>`;
+}
+function catalogView(){
+  if(isTeacher())return teachView();
+  return `<h2>Courses</h2><div class="grid">`+db.courses.map((c,i)=>{
+    const en=db.enroll[key(c.id)];
+    return card(c,i,en?`<button onclick="openCourse(${c.id})">Continue</button>`:`<button class="primary" onclick="enroll(${c.id})">Enroll</button>`)
+  }).join("")+`</div>`;
+}
+function mineView(){
+  if(isTeacher())return teachView();
+  const list=db.courses.filter(c=>db.enroll[key(c.id)]);
+  if(!list.length)return `<div class="empty">You haven't enrolled in any course yet.<br><br><button class="primary" onclick="view='catalog';render()">Browse courses</button></div>`;
+  return `<h2>My learning</h2><div class="grid">`+list.map((c,i)=>card(c,i,
+    `<div class="bar" role="progressbar" aria-valuenow="${pct(c)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct(c)}%"></i></div>
+     <div class="meta">${pct(c)}% complete${db.scores[key(c.id)]!=null?` · Quiz ${db.scores[key(c.id)]}%`:""}</div>
+     <button onclick="openCourse(${c.id})">Open course</button>`)).join("")+`</div>`;
+}
+function courseView(c){
+  const d=db.done[key(c.id)]||[];
+  const back=`<button onclick="open=null;quizMode=false;flash='';render()">Back</button>`;
+  if(quizMode)return `${back}<h2 style="margin-top:1rem">${esc(c.title)} quiz</h2>`+c.quiz.map((q,i)=>
+    `<div class="q"><strong>${esc(q.q)}</strong>`+q.o.map((o,j)=>`<label><input type="radio" name="q${i}" value="${j}">${esc(o)}</label>`).join("")+`</div>`).join("")
+    +`<button class="primary" onclick="submitQuiz(${c.id})">Submit answers</button>`;
+  return `${back}<h2 style="margin-top:1rem">${esc(c.title)}</h2>
+  <div class="bar"><i style="width:${pct(c)}%"></i></div><p class="meta">${pct(c)}% complete</p>
+  ${flash?`<div class="msg" role="status">${esc(flash)}</div>`:""}`+
+  c.lessons.map((l,i)=>`<div class="lesson ${d.includes(i)?"done":""}"><span>${i+1}. ${esc(l)}</span>
+  <button onclick="toggle(${c.id},${i})">${d.includes(i)?"Undo":"Mark done"}</button></div>`).join("")+
+  (d.length===c.lessons.length&&c.quiz.length?`<button class="primary" onclick="quizMode=true;render()">Take quiz</button>`:`<p class="meta">Finish all lessons to unlock the quiz.</p>`);
+}
+function teachView(){
+  if(!isTeacher())return `<div class="empty">Switch to the instructor account to create courses.</div>`;
+  return `<h2>Create a course</h2><div class="card">
+  <label for="t">Title</label><input id="t">
+  <label for="d">Description</label><textarea id="d" rows="2"></textarea>
+  <label for="l">Lessons (one per line)</label><textarea id="l" rows="4"></textarea>
+  <label for="qq">Quiz question</label><input id="qq">
+  <label for="qo">Options (one per line, first is correct)</label><textarea id="qo" rows="3"></textarea>
+  <div id="err" class="meta" role="alert"></div><button class="primary" onclick="addCourse()">Publish course</button></div>
+  <h2 style="margin-top:1.5rem">Enrollment</h2>`+db.courses.map(c=>{
+    const n=USERS.filter(u=>db.enroll[u.id+"|"+c.id]).length;
+    return `<div class="lesson"><span>${esc(c.title)}</span><span class="meta" style="flex:none">${n} enrolled</span></div>`}).join("");
+}
+function enroll(id){db.enroll[key(id)]=true;save();render()}
+function openCourse(id){open=id;quizMode=false;flash="";render()}
+function toggle(id,i){const k=key(id),d=db.done[k]||[];db.done[k]=d.includes(i)?d.filter(x=>x!==i):[...d,i];save();render()}
+function submitQuiz(id){
+  const c=db.courses.find(x=>x.id===id);let ok=0;
+  c.quiz.forEach((q,i)=>{const r=document.querySelector(`input[name=q${i}]:checked`);if(r&&+r.value===q.a)ok++});
+  const s=Math.round(ok/c.quiz.length*100);db.scores[key(id)]=s;save();
+  quizMode=false;flash=`You scored ${s}% (${ok} of ${c.quiz.length} correct).`;render();
+}
+function addCourse(){
+  const t=$("#t").value.trim(),ls=$("#l").value.split("\n").map(x=>x.trim()).filter(Boolean),
+  qq=$("#qq").value.trim(),qo=$("#qo").value.split("\n").map(x=>x.trim()).filter(Boolean);
+  if(!t||!ls.length){$("#err").textContent="Add a title and at least one lesson.";return}
+  const u=USERS.find(x=>x.id===me);
+  db.courses.push({id:Date.now(),title:t,by:u.name.split(" (")[0],desc:$("#d").value.trim(),lessons:ls,
+    quiz:qq&&qo.length>1?[{q:qq,o:qo,a:0}]:[]});
+  save();view="teach";render();
+}
+render();
+</script>
+</body>
+</html>
